@@ -5,7 +5,8 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useNotes } from '../context/NotesContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { deleteNote } from '../store/slices/notesSlice';
 import EditNoteModal from './EditNoteModal';
 import { formatDate } from '../utils/dateUtils';
 
@@ -23,20 +24,27 @@ interface NoteCardProps {
 
 const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
   const [modalVisible, setModalVisible] = useState(false);
-  const { deleteNote } = useNotes();
+  const dispatch = useAppDispatch();
+  const { user } = useAppSelector((state) => state.auth);
 
   const handleDelete = () => {
     Alert.alert(
       'Delete Note',
       'Are you sure you want to delete this note?',
       [
-        // this isn't working for android it seems 
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteNote(note.id) },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: () => {
+            if (user) {
+              dispatch(deleteNote({ userId: user.id, id: note.id }));
+            }
+          }
+        },
       ]
     );
   };
-
 
   return (
     <>
@@ -52,7 +60,6 @@ const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.1,
           shadowRadius: 8,
-        //   elevation: 4
         }}
         onPress={() => setModalVisible(true)}
         onLongPress={handleDelete}

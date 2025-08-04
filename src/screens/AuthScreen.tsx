@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   ImageBackground,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useAuth } from '../context/AuthContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { signUp, signIn, clearError } from '../store/slices/authSlice';
 
 type RootStackParamList = {
   Auth: undefined;
@@ -26,8 +27,16 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { signUp, signIn } = useAuth();
+  
+  const dispatch = useAppDispatch();
+  const { loading, error } = useAppSelector((state) => state.auth);
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Error', error);
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
 
   const handleAuth = async () => {
     if (!email || !password || (isSignUp && !name)) {
@@ -35,23 +44,11 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
       return;
     }
 
-    setLoading(true);
-    let result;
-    
     if (isSignUp) {
-      result = await signUp(email, password, name);
+      dispatch(signUp({ email, password, name }));
     } else {
-      result = await signIn(email, password);
+      dispatch(signIn({ email, password }));
     }
-
-    if (result.success) {
-      // Navigation will be handled by AuthNavigator useEffect
-      // navigation.navigate('Main');
-    } else {
-      Alert.alert('Error', result.error || 'Authentication failed');
-    }
-    
-    setLoading(false);
   };
 
   return (

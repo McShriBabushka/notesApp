@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FlatList,
   ImageBackground,
@@ -9,12 +9,26 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AddNoteModal from '../components/AddNoteModal';
 import NoteCard from '../components/NoteCard';
-import { useAuth } from '../context/AuthContext';
-import { useNotes } from '../context/NotesContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { signOut } from '../store/slices/authSlice';
+import { loadNotes, clearNotes } from '../store/slices/notesSlice';
+
 export default function HomeScreen() {
-  const { user, signOut } = useAuth();
-  const { notes } = useNotes();
+  const dispatch = useAppDispatch();
+  const { user } = useAppSelector((state) => state.auth);
+  const { notes } = useAppSelector((state) => state.notes);
   const [modalVisible, setModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      dispatch(loadNotes(user.id));
+    }
+  }, [user, dispatch]);
+
+  const handleSignOut = () => {
+    dispatch(clearNotes());
+    dispatch(signOut());
+  };
 
   const renderNote = ({ item }: { item: any }) => (
     <NoteCard note={item} />
@@ -46,7 +60,7 @@ export default function HomeScreen() {
               paddingVertical: 8,
               borderRadius: 20
             }}
-            onPress={signOut}
+            onPress={handleSignOut}
           >
             <Text style={{
               color: 'white',
@@ -56,7 +70,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* user Infornation */}
+        {/* user Information */}
         <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
           <Text style={{
             fontSize: 18,

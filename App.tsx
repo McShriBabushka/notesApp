@@ -1,13 +1,17 @@
+// App.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, ActivityIndicator } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+// import Ionicons from 'react-native-vector-icons/Ionicons';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import { Provider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
 
-// Context Providers
-import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { NotesProvider } from './src/context/NotesContext';
+// Redux Store
+import { store, persistor } from './src/store/store';
+import { useAppSelector } from './src/store/hooks';
 
 // Screens
 import AuthScreen from './src/screens/AuthScreen';
@@ -17,7 +21,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Tabs Navigator (when user is authenticated)
+// Tabs Navigator-when the user is authenticated
 function TabsNavigator() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }}>
@@ -27,7 +31,7 @@ function TabsNavigator() {
         options={{
           title: 'Notes',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={28} color={color} />
+            <Icon name="home" size={28}  />
           ),
         }}
       />
@@ -37,7 +41,7 @@ function TabsNavigator() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="user-circle" size={size || 28} color={color} />
+            <Icon name="account" size={size || 28}  />
           ),
         }}
       />
@@ -45,10 +49,8 @@ function TabsNavigator() {
   );
 }
 
-
 function AppNavigator() {
-  const { user, loading } = useAuth();
-
+  const { user, loading } = useAppSelector((state) => state.auth);
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }}>
@@ -70,12 +72,12 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NotesProvider>
+    <Provider store={store}>
+      <PersistGate loading={<ActivityIndicator size="large" color="#3B82F6" />} persistor={persistor}>
         <NavigationContainer>
           <AppNavigator />
         </NavigationContainer>
-      </NotesProvider>
-    </AuthProvider>
+      </PersistGate>
+    </Provider>
   );
 }

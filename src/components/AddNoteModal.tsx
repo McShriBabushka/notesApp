@@ -9,7 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useNotes } from '../context/NotesContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { addNote } from '../store/slices/notesSlice';
 
 interface AddNoteModalProps {
   visible: boolean;
@@ -19,7 +20,8 @@ interface AddNoteModalProps {
 const AddNoteModal: React.FC<AddNoteModalProps> = ({ visible, onClose }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const { addNote } = useNotes();
+  const dispatch = useAppDispatch();
+  const { user } = useAppSelector((state) => state.auth);
 
   const handleSave = async () => {
     if (!title.trim() && !content.trim()) {
@@ -27,10 +29,16 @@ const AddNoteModal: React.FC<AddNoteModalProps> = ({ visible, onClose }) => {
       return;
     }
 
-    await addNote(title.trim() || 'Untitled', content.trim());
-    setTitle('');
-    setContent('');
-    onClose();
+    if (user) {
+      dispatch(addNote({
+        userId: user.id,
+        title: title.trim() || 'Untitled',
+        content: content.trim()
+      }));
+      setTitle('');
+      setContent('');
+      onClose();
+    }
   };
 
   const handleClose = () => {

@@ -9,7 +9,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { useNotes } from '../context/NotesContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { updateNote, deleteNote } from '../store/slices/notesSlice';
 
 interface Note {
   id: string;
@@ -28,7 +29,8 @@ interface EditNoteModalProps {
 const EditNoteModal: React.FC<EditNoteModalProps> = ({ visible, note, onClose }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const { updateNote, deleteNote } = useNotes();
+  const dispatch = useAppDispatch();
+  const { user } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     if (note) {
@@ -43,7 +45,14 @@ const EditNoteModal: React.FC<EditNoteModalProps> = ({ visible, note, onClose })
       return;
     }
 
-    await updateNote(note.id, title.trim() || 'Untitled', content.trim());
+    if (user) {
+      dispatch(updateNote({
+        userId: user.id,
+        id: note.id,
+        title: title.trim() || 'Untitled',
+        content: content.trim()
+      }));
+    }
   };
 
   const handleDelete = () => {
@@ -56,8 +65,10 @@ const EditNoteModal: React.FC<EditNoteModalProps> = ({ visible, note, onClose })
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            deleteNote(note.id);
-            onClose();
+            if (user) {
+              dispatch(deleteNote({ userId: user.id, id: note.id }));
+              onClose();
+            }
           },
         },
       ]
