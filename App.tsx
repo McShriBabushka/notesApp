@@ -1,4 +1,3 @@
-// App.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -17,6 +16,7 @@ import { useAppSelector } from './src/store/hooks';
 import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import NewsScreen from './src/screens/NewsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -32,6 +32,16 @@ function TabsNavigator() {
           title: 'Notes',
           tabBarIcon: ({ color, size }) => (
             <Icon name="home" size={28}  />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="News"
+        component={NewsScreen}
+        options={{
+          title: 'News',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="newspaper-o" size={24} color={color} />
           ),
         }}
       />
