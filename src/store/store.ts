@@ -6,6 +6,7 @@ const createSagaMiddleware = require('redux-saga').default;
 import authSlice from './slices/authSlice';
 import notesSlice from './slices/notesSlice';
 import newsSlice from './slices/newsSlice';
+import locationSlice from './slices/locationSlices'
 import rootSaga from './sagas';
 
 const sagaMiddleware = createSagaMiddleware();
@@ -20,6 +21,7 @@ const rootReducer = combineReducers({
   auth: authSlice,
   notes: notesSlice,
   news: newsSlice,
+  location: locationSlice
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

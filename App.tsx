@@ -17,6 +17,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import NewsScreen from './src/screens/NewsScreen';
+import LocationScreen from './src/screens/LocationScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -31,7 +32,7 @@ function TabsNavigator() {
         options={{
           title: 'Notes',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="home" size={28}  />
+            <Icon name="home" size={28} color={color} />
           ),
         }}
       />
@@ -46,12 +47,22 @@ function TabsNavigator() {
         }}
       />
       <Tab.Screen
+        name="Location"
+        component={LocationScreen}
+        options={{
+          title: 'Location',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="map-marker" size={size || 28} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="account" size={size || 28}  />
+            <Icon name="user" size={size || 28} color={color} />
           ),
         }}
       />
