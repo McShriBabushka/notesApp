@@ -2,9 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, ActivityIndicator } from 'react-native';
-// import Ionicons from 'react-native-vector-icons/Ionicons';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import { View, ActivityIndicator, Text } from 'react-native';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 
@@ -22,17 +20,48 @@ import LocationScreen from './src/screens/LocationScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+const TabIcon = ({ name, color, focused }: { 
+  name: string; 
+  color: string; 
+  focused: boolean; 
+}) => {
+  const getIcon = () => {
+    switch (name) {
+      case 'home': return '🏠';
+      case 'news': return '📰';
+      case 'location': return '📍';
+      case 'profile': return '👤';
+      default: return '●';
+    }
+  };
+
+  return (
+    <Text style={{
+      fontSize: focused ? 24 : 20,
+      color: color,
+    }}>
+      {getIcon()}
+    </Text>
+  );
+};
+
 // Tabs Navigator-when the user is authenticated
 function TabsNavigator() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator 
+      screenOptions={{ 
+        headerShown: false,
+        tabBarActiveTintColor: '#3B82F6',
+        tabBarInactiveTintColor: '#6B7280',
+      }}
+    >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
           title: 'Notes',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="home" size={28} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="home" color={color} focused={focused} />
           ),
         }}
       />
@@ -41,8 +70,8 @@ function TabsNavigator() {
         component={NewsScreen}
         options={{
           title: 'News',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="newspaper-o" size={24} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="news" color={color} focused={focused} />
           ),
         }}
       />
@@ -51,8 +80,8 @@ function TabsNavigator() {
         component={LocationScreen}
         options={{
           title: 'Location',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="map-marker" size={size || 28} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="location" color={color} focused={focused} />
           ),
         }}
       />
@@ -61,8 +90,8 @@ function TabsNavigator() {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="user" size={size || 28} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="profile" color={color} focused={focused} />
           ),
         }}
       />

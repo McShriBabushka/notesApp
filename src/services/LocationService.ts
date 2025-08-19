@@ -10,6 +10,13 @@ interface NativeLocationModuleInterface extends NativeModule{
     accuracy: number;
     timestamp: number;
   }>;
+  downloadLocationHistory(): Promise<{
+    filePath: string;
+    fileName: string;
+    recordCount: number;
+  }>;
+  getLocationHistoryCount(): Promise<number>;
+  clearLocationHistory(): Promise<string>;
 }
 
 const { NativeLocationModule } = NativeModules as { NativeLocationModule: NativeLocationModuleInterface };
@@ -52,6 +59,27 @@ export class LocationService {
       throw new Error('NativeLocationModule is not available');
     }
     return NativeLocationModule.getCurrentLocation();
+  }
+
+  public async downloadLocationHistory() {
+    if (!NativeLocationModule) {
+      throw new Error('NativeLocationModule is not available');
+    }
+    return NativeLocationModule.downloadLocationHistory();
+  }
+
+  public async getLocationHistoryCount(): Promise<number> {
+    if (!NativeLocationModule) {
+      throw new Error('NativeLocationModule is not available');
+    }
+    return NativeLocationModule.getLocationHistoryCount();
+  }
+
+  public async clearLocationHistory(): Promise<string> {
+    if (!NativeLocationModule) {
+      throw new Error('NativeLocationModule is not available');
+    }
+    return NativeLocationModule.clearLocationHistory();
   }
 
   public subscribeToLocationUpdates(callback: (location: any) => void): (() => void) | null {

@@ -7,11 +7,17 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Environment
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.collections.ArrayList
 
 class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LocationListener {
 
@@ -19,12 +25,24 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
     private var lastKnownLocation: Location? = null
     private val MIN_DISTANCE_CHANGE_FOR_UPDATES = 50f // 50 meters
     private val MIN_TIME_BW_UPDATES = 10000L // 10 seconds
+    
+    // Store location history for CSV export
+    private val locationHistory = ArrayList<LocationData>()
 
     companion object {
         const val NAME = "NativeLocationModule"
         const val LOCATION_UPDATE_EVENT = "locationUpdate"
         const val TAG = "NativeLocationModule"
     }
+
+    data class LocationData(
+        val latitude: Double,
+        val longitude: Double,
+        val accuracy: Float,
+        val timestamp: Long,
+        val provider: String,
+        val dateTime: String
+    )
 
     override fun getName(): String {
         return NAME
@@ -41,7 +59,8 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
             Log.e(TAG, "Error setting up location manager", e)
         }
     }
-@ReactMethod
+
+    @ReactMethod
     fun startLocationUpdates(promise: Promise) {
         try {
             if (locationManager == null) {
@@ -87,7 +106,6 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
                 )
             }
 
-
             // Try to get last known location immediately
             getLastKnownLocation()
             
@@ -132,6 +150,76 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
             promise.reject("GET_LOCATION_ERROR", e.message)
         }
     }
+
+    @ReactMethod
+    fun downloadLocationHistory(promise: Promise) {
+        try {
+            if (locationHistory.isEmpty()) {
+                promise.reject("NO_DATA", "No location data to export")
+                return
+            }
+
+            val csvContent = generateCSVContent()
+            val fileName = "location_history_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
+            
+            // Use Downloads directory which is accessible to user
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val appDir = File(downloadsDir, "LocationTracker")
+            
+            if (!appDir.exists()) {
+                appDir.mkdirs()
+            }
+            
+            val file = File(appDir, fileName)
+            
+            FileWriter(file).use { writer ->
+                writer.write(csvContent)
+            }
+            
+            val result = Arguments.createMap().apply {
+                putString("filePath", file.absolutePath)
+                putString("fileName", fileName)
+                putInt("recordCount", locationHistory.size)
+            }
+            
+            promise.resolve(result)
+            Log.d(TAG, "CSV file saved successfully: ${file.absolutePath}")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error downloading location history", e)
+            promise.reject("DOWNLOAD_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getLocationHistoryCount(promise: Promise) {
+        try {
+            promise.resolve(locationHistory.size)
+        } catch (e: Exception) {
+            promise.reject("COUNT_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun clearLocationHistory(promise: Promise) {
+        try {
+            locationHistory.clear()
+            promise.resolve("Location history cleared")
+            Log.d(TAG, "Location history cleared")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing location history", e)
+            promise.reject("CLEAR_ERROR", e.message)
+        }
+    }
+
+    private fun generateCSVContent(): String {
+        val header = "Latitude,Longitude,Accuracy,Timestamp,DateTime,Provider\n"
+        val rows = locationHistory.joinToString("\n") { location ->
+            "${location.latitude},${location.longitude},${location.accuracy},${location.timestamp},\"${location.dateTime}\",${location.provider}"
+        }
+        return header + rows
+    }
+
     private fun getLastKnownLocation() {
         try {
             if (locationManager != null) {
@@ -164,13 +252,26 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
             }
 
             reactApplicationContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(LOCATION_UPDATE_EVENT, params)
+                .emit(LOCATION_UPDATE_EVENT, params)
 
-            Log.d(TAG, "Location update sent: ${location.latitude}, ${location.longitude}")
+            // Store location in history for CSV export
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val locationData = LocationData(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                accuracy = location.accuracy,
+                timestamp = location.time,
+                provider = location.provider ?: "unknown",
+                dateTime = dateFormat.format(Date(location.time))
+            )
+            locationHistory.add(locationData)
+
+            Log.d(TAG, "Location update sent and stored: ${location.latitude}, ${location.longitude}")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending location update", e)
         }
     }
+
     // LocationListener methods
     override fun onLocationChanged(location: Location) {
         Log.d(TAG, "Location changed: ${location.latitude}, ${location.longitude}")

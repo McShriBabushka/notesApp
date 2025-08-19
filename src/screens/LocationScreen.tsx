@@ -17,7 +17,10 @@ import {
   setLocationError,
   setLocationLoading,
   setLocationTracking,
+  setDownloadLoading,
+  setLocationHistoryCount,
   clearLocationError,
+  resetLocationHistory,
 } from '../store/slices/locationSlices';
 import LocationService from '../services/LocationService';
 
@@ -111,9 +114,14 @@ const SimpleWebMap = ({ location, style }: { location: any; style: any }) => {
 
 const LocationScreen: React.FC = () => {
   const dispatch = useDispatch();
-  const { currentLocation, isTracking, error, loading } = useAppSelector(
-    (state) => state.location
-  );
+  const { 
+    currentLocation, 
+    isTracking, 
+    error, 
+    loading, 
+    downloadLoading, 
+    locationHistoryCount 
+  } = useAppSelector((state) => state.location);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -125,8 +133,9 @@ const LocationScreen: React.FC = () => {
 
     unsubscribeRef.current = unsubscribe;
 
-    // Get initial location
+    // Get initial location and history count
     handleGetCurrentLocation();
+    getHistoryCount();
 
     return () => {
       // Cleanup on unmount
@@ -136,6 +145,15 @@ const LocationScreen: React.FC = () => {
       LocationService.unsubscribeFromLocationUpdates();
     };
   }, [dispatch]);
+
+  const getHistoryCount = async () => {
+    try {
+      const count = await LocationService.getLocationHistoryCount();
+      dispatch(setLocationHistoryCount(count));
+    } catch (err) {
+      console.log('Error getting history count:', err);
+    }
+  };
 
   const handleGetCurrentLocation = async () => {
     try {
@@ -191,6 +209,58 @@ const LocationScreen: React.FC = () => {
     }
   };
 
+  const handleDownloadCSV = async () => {
+    try {
+      if (locationHistoryCount === 0) {
+        Alert.alert('No Data', 'No location data available to download');
+        return;
+      }
+
+      dispatch(setDownloadLoading(true));
+      dispatch(clearLocationError());
+      
+      const result = await LocationService.downloadLocationHistory();
+      
+      Alert.alert(
+        'Download Complete',
+        `CSV file saved successfully!\n\nFile: ${result.fileName}\nPath: ${result.filePath}\nRecords: ${result.recordCount}`,
+        [{ text: 'OK' }]
+      );
+      
+      console.log('CSV downloaded:', result);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to download CSV';
+      dispatch(setLocationError(errorMessage));
+      Alert.alert('Download Error', errorMessage);
+    } finally {
+      dispatch(setDownloadLoading(false));
+    }
+  };
+
+  const handleClearHistory = async () => {
+    Alert.alert(
+      'Clear History',
+      'Are you sure you want to clear all location history? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await LocationService.clearLocationHistory();
+              dispatch(resetLocationHistory());
+              Alert.alert('Success', 'Location history cleared');
+            } catch (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Failed to clear history';
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -206,6 +276,21 @@ const LocationScreen: React.FC = () => {
         location={currentLocation} 
         style={styles.mapSection}
       />
+
+      {/* Floating Download Button */}
+      <TouchableOpacity
+        style={styles.downloadButton}
+        onPress={handleDownloadCSV}
+        disabled={downloadLoading || locationHistoryCount === 0}
+      >
+        {downloadLoading ? (
+          <ActivityIndicator color="white" size="small" />
+        ) : (
+          <Text style={styles.downloadButtonText}>
+            📥 {locationHistoryCount}
+          </Text>
+        )}
+      </TouchableOpacity>
 
       <View style={styles.controlsContainer}>
         <View style={styles.buttonRow}>
@@ -239,6 +324,15 @@ const LocationScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {locationHistoryCount > 0 && (
+          <TouchableOpacity
+            style={[styles.button, styles.warningButton, { marginTop: 10 }]}
+            onPress={handleClearHistory}
+          >
+            <Text style={styles.buttonText}>Clear History ({locationHistoryCount})</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.statusContainer}>
           <Text style={styles.statusText}>
             Status: {isTracking ? '🟢 Tracking Active' : '🔴 Tracking Inactive'}
@@ -253,6 +347,9 @@ const LocationScreen: React.FC = () => {
               </Text>
             </>
           )}
+          <Text style={styles.statusText}>
+            Recorded Locations: {locationHistoryCount}
+          </Text>
         </View>
       </View>
     </View>
@@ -325,6 +422,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
+  downloadButton: {
+    position: 'absolute',
+    bottom: 200,
+    right: 20,
+    backgroundColor: '#4e3e6dff',
+    width: 40,
+    height: 40,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    zIndex: 1000,
+  },
+  downloadButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
   controlsContainer: {
     padding: 20,
     backgroundColor: 'white',
@@ -351,6 +474,9 @@ const styles = StyleSheet.create({
   },
   dangerButton: {
     backgroundColor: '#EF4444',
+  },
+  warningButton: {
+    backgroundColor: '#F59E0B',
   },
   buttonText: {
     color: 'white',
