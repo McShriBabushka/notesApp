@@ -11,15 +11,18 @@ import android.os.Environment
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.modules.core.PermissionAwareActivity
+import com.facebook.react.modules.core.PermissionListener
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
 
-class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LocationListener {
+class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LocationListener, PermissionListener {
 
     private var locationManager: LocationManager? = null
     private var lastKnownLocation: Location? = null
@@ -28,6 +31,15 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
     
     // Store location history for CSV export
     private val locationHistory = ArrayList<LocationData>()
+    
+    // Permission handling
+    private var pendingPromise: Promise? = null
+    private val LOCATION_PERMISSION_REQUEST_CODE = 1001
+    
+    private val REQUIRED_PERMISSIONS = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
 
     companion object {
         const val NAME = "NativeLocationModule"
@@ -52,11 +64,42 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
         setupLocationManager()
     }
 
-    private fun setupLocationManager() {
+     private fun setupLocationManager() {
         try {
             locationManager = reactApplicationContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up location manager", e)
+        }
+    }
+
+    @ReactMethod
+    fun checkLocationPermissions(promise: Promise) {
+        try {
+            val hasPermissions = hasLocationPermissions()
+            promise.resolve(hasPermissions)
+        } catch (e: Exception) {
+            promise.reject("PERMISSION_CHECK_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun requestLocationPermissions(promise: Promise) {
+        try {
+            if (hasLocationPermissions()) {
+                promise.resolve("GRANTED")
+                return
+            }
+
+            val activity = currentActivity
+            if (activity !is PermissionAwareActivity) {
+                promise.reject("ACTIVITY_ERROR", "Current activity is not permission aware")
+                return
+            }
+
+            pendingPromise = promise
+            activity.requestPermissions(REQUIRED_PERMISSIONS, LOCATION_PERMISSION_REQUEST_CODE, this)
+        } catch (e: Exception) {
+            promise.reject("PERMISSION_REQUEST_ERROR", e.message)
         }
     }
 
@@ -68,10 +111,8 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
                 return
             }
 
-            // For this example, we're hardcoding permissions as true 
-            val hasPermission = true
-
-            if (!hasPermission) {
+            // Check permissions properly
+            if (!hasLocationPermissions()) {
                 promise.reject("PERMISSION_DENIED", "Location permissions not granted")
                 return
             }
@@ -85,25 +126,30 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
                 return
             }
 
-            // Start location updates
+            // Start location updates with proper permission check
             if (isGPSEnabled) {
-                locationManager!!.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    MIN_TIME_BW_UPDATES,
-                    MIN_DISTANCE_CHANGE_FOR_UPDATES,
-                    this,
-                    Looper.getMainLooper()
-                )
+                if (ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    locationManager!!.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        MIN_TIME_BW_UPDATES,
+                        MIN_DISTANCE_CHANGE_FOR_UPDATES,
+                        this,
+                        Looper.getMainLooper()
+                    )
+                }
             }
             
             if (isNetworkEnabled) {
-                locationManager!!.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER,
-                    MIN_TIME_BW_UPDATES,
-                    MIN_DISTANCE_CHANGE_FOR_UPDATES,
-                    this,
-                    Looper.getMainLooper()
-                )
+                if (ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    locationManager!!.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        MIN_TIME_BW_UPDATES,
+                        MIN_DISTANCE_CHANGE_FOR_UPDATES,
+                        this,
+                        Looper.getMainLooper()
+                    )
+                }
             }
 
             // Try to get last known location immediately
@@ -118,7 +164,7 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
         }
     }
 
-    @ReactMethod
+     @ReactMethod
     fun stopLocationUpdates(promise: Promise) {
         try {
             locationManager?.removeUpdates(this)
@@ -132,23 +178,43 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
 
     @ReactMethod
     fun getCurrentLocation(promise: Promise) {
-        try {
-            getLastKnownLocation()
-            if (lastKnownLocation != null) {
-                val locationData = Arguments.createMap().apply {
-                    putDouble("latitude", lastKnownLocation!!.latitude)
-                    putDouble("longitude", lastKnownLocation!!.longitude)
-                    putDouble("accuracy", lastKnownLocation!!.accuracy.toDouble())
-                    putDouble("timestamp", lastKnownLocation!!.time.toDouble())
-                }
-                promise.resolve(locationData)
-            } else {
-                promise.reject("NO_LOCATION", "No location available")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting current location", e)
-            promise.reject("GET_LOCATION_ERROR", e.message)
+    try {
+        if (!hasLocationPermissions()) {
+            promise.reject("PERMISSION_DENIED", "Location permissions not granted")
+            return
         }
+        
+        getLastKnownLocation()
+        if (lastKnownLocation != null) {
+            // Store this location in history for CSV export
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val locationData = LocationData(
+                latitude = lastKnownLocation!!.latitude,
+                longitude = lastKnownLocation!!.longitude,
+                accuracy = lastKnownLocation!!.accuracy,
+                timestamp = lastKnownLocation!!.time,
+                provider = lastKnownLocation!!.provider ?: "manual",
+                dateTime = dateFormat.format(Date(lastKnownLocation!!.time))
+            )
+            locationHistory.add(locationData)
+            
+            val locationMap = Arguments.createMap().apply {
+                putDouble("latitude", lastKnownLocation!!.latitude)
+                putDouble("longitude", lastKnownLocation!!.longitude)
+                putDouble("accuracy", lastKnownLocation!!.accuracy.toDouble())
+                putDouble("timestamp", lastKnownLocation!!.time.toDouble())
+                putString("provider", lastKnownLocation!!.provider ?: "manual")
+            }
+            
+            Log.d(TAG, "Current location retrieved and stored: ${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude}")
+            promise.resolve(locationMap)
+        } else {
+            promise.reject("NO_LOCATION", "No location available")
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error getting current location", e)
+        promise.reject("GET_LOCATION_ERROR", e.message)
+    }
     }
 
     @ReactMethod
@@ -191,7 +257,7 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
         }
     }
 
-    @ReactMethod
+     @ReactMethod
     fun getLocationHistoryCount(promise: Promise) {
         try {
             promise.resolve(locationHistory.size)
@@ -211,6 +277,50 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
             promise.reject("CLEAR_ERROR", e.message)
         }
     }
+    // Permission helper methods
+    private fun hasLocationPermissions(): Boolean {
+        val fineLocationGranted = ContextCompat.checkSelfPermission(
+            reactApplicationContext,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseLocationGranted = ContextCompat.checkSelfPermission(
+            reactApplicationContext,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        return fineLocationGranted || coarseLocationGranted
+    }
+
+     // PermissionListener implementation
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ): Boolean {
+         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            val pendingPromise = this.pendingPromise
+            this.pendingPromise = null
+
+            if (pendingPromise != null) {
+                var granted = false
+                for (i in grantResults.indices) {
+                    if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                        granted=true
+                        break
+                    }
+                }
+
+                if (granted) {
+                    pendingPromise.resolve("GRANTED")
+                } else {
+                    pendingPromise.resolve("DENIED")
+                }
+            }
+            return true
+        }
+        return false
+    }
 
     private fun generateCSVContent(): String {
         val header = "Latitude,Longitude,Accuracy,Timestamp,DateTime,Provider\n"
@@ -220,11 +330,21 @@ class NativeLocationModule(reactContext: ReactApplicationContext) : ReactContext
         return header + rows
     }
 
+
     private fun getLastKnownLocation() {
         try {
-            if (locationManager != null) {
-                val gpsLocation = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                val networkLocation = locationManager!!.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            if (locationManager != null && hasLocationPermissions()) {
+                var gpsLocation: Location? = null
+                var networkLocation: Location? = null
+
+                if (ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    gpsLocation = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                }
+
+                if (ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    ActivityCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    networkLocation = locationManager!!.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                }
 
                 // Choose the most accurate location
                 lastKnownLocation = when {

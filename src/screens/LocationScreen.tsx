@@ -123,8 +123,12 @@ const LocationScreen: React.FC = () => {
     locationHistoryCount 
   } = useAppSelector((state) => state.location);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<'checking' | 'granted' | 'denied'>('checking');
 
   useEffect(() => {
+    // Check permissions on component mount
+    checkAndRequestPermissions();
+    
     // Subscribe to location updates when component mounts
     const unsubscribe = LocationService.subscribeToLocationUpdates((location) => {
       console.log('Location update received:', location);
@@ -133,8 +137,7 @@ const LocationScreen: React.FC = () => {
 
     unsubscribeRef.current = unsubscribe;
 
-    // Get initial location and history count
-    handleGetCurrentLocation();
+    // Get initial history count
     getHistoryCount();
 
     return () => {
@@ -145,6 +148,60 @@ const LocationScreen: React.FC = () => {
       LocationService.unsubscribeFromLocationUpdates();
     };
   }, [dispatch]);
+
+  const checkAndRequestPermissions = async () => {
+    try {
+      setPermissionStatus('checking');
+      
+      // First check if we already have permissions
+      const hasPermissions = await LocationService.checkLocationPermissions();
+      
+      if (hasPermissions) {
+        setPermissionStatus('granted');
+        // Get initial location if we have permissions
+        handleGetCurrentLocation();
+        return;
+      }
+
+      // Show explanation dialog before requesting permissions
+      Alert.alert(
+        'Location Permission Required',
+        'This app needs access to your location to track and record your movements. You can choose to allow location access while using the app or all the time.',
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: () => setPermissionStatus('denied'),
+          },
+          {
+            text: 'Grant Permission',
+            onPress: async () => {
+              try {
+                const result = await LocationService.requestLocationPermissions();
+                if (result === 'GRANTED') {
+                  setPermissionStatus('granted');
+                  handleGetCurrentLocation();
+                } else {
+                  setPermissionStatus('denied');
+                  Alert.alert(
+                    'Permission Denied',
+                    'Location permission is required for this app to function. You can grant permission in Settings > Apps > [Your App] > Permissions.',
+                    [{ text: 'OK' }]
+                  );
+                }
+              } catch (err) {
+                console.error('Error requesting permissions:', err);
+                setPermissionStatus('denied');
+              }
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      console.error('Error checking permissions:', err);
+      setPermissionStatus('denied');
+    }
+  };
 
   const getHistoryCount = async () => {
     try {
@@ -157,11 +214,28 @@ const LocationScreen: React.FC = () => {
 
   const handleGetCurrentLocation = async () => {
     try {
+      // Check permissions before getting location
+      const hasPermissions = await LocationService.checkLocationPermissions();
+      if (!hasPermissions) {
+        Alert.alert(
+          'Permission Required',
+          'Location permission is required to get your current location.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Grant Permission', onPress: checkAndRequestPermissions },
+          ]
+        );
+        return;
+      }
+
       dispatch(setLocationLoading(true));
       dispatch(clearLocationError());
       
       const location = await LocationService.getCurrentLocation();
       dispatch(setCurrentLocation(location));
+      
+      // Update the count after getting location
+      await getHistoryCount();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get location';
       dispatch(setLocationError(errorMessage));
@@ -173,6 +247,20 @@ const LocationScreen: React.FC = () => {
 
   const handleStartTracking = async () => {
     try {
+      // Check permissions before starting tracking
+      const hasPermissions = await LocationService.checkLocationPermissions();
+      if (!hasPermissions) {
+        Alert.alert(
+          'Permission Required',
+          'Location permission is required to start tracking.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Grant Permission', onPress: checkAndRequestPermissions },
+          ]
+        );
+        return;
+      }
+
       dispatch(setLocationLoading(true));
       dispatch(clearLocationError());
       
@@ -180,6 +268,8 @@ const LocationScreen: React.FC = () => {
       dispatch(setLocationTracking(true));
       console.log('Location tracking started:', result);
       
+      // Update count after starting tracking
+      await getHistoryCount();
       Alert.alert('Success', 'Location tracking started');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start tracking';
@@ -209,9 +299,13 @@ const LocationScreen: React.FC = () => {
     }
   };
 
-  const handleDownloadCSV = async () => {
+   const handleDownloadCSV = async () => {
     try {
-      if (locationHistoryCount === 0) {
+      // Get fresh count before checking
+      const freshCount = await LocationService.getLocationHistoryCount();
+      dispatch(setLocationHistoryCount(freshCount));
+      
+      if (freshCount === 0) {
         Alert.alert('No Data', 'No location data available to download');
         return;
       }

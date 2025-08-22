@@ -17,6 +17,8 @@ interface NativeLocationModuleInterface extends NativeModule{
   }>;
   getLocationHistoryCount(): Promise<number>;
   clearLocationHistory(): Promise<string>;
+  checkLocationPermissions(): Promise<boolean>;
+  requestLocationPermissions(): Promise<'GRANTED' | 'DENIED'>;
 }
 
 const { NativeLocationModule } = NativeModules as { NativeLocationModule: NativeLocationModuleInterface };
@@ -38,6 +40,20 @@ export class LocationService {
       LocationService.instance = new LocationService();
     }
     return LocationService.instance;
+  }
+
+  public async checkLocationPermissions(): Promise<boolean> {
+    if (!NativeLocationModule) {
+      throw new Error('NativeLocationModule is not available');
+    }
+    return NativeLocationModule.checkLocationPermissions();
+  }
+
+  public async requestLocationPermissions(): Promise<'GRANTED' | 'DENIED'> {
+    if (!NativeLocationModule) {
+      throw new Error('NativeLocationModule is not available');
+    }
+    return NativeLocationModule.requestLocationPermissions();
   }
 
   public async startLocationUpdates(): Promise<string> {

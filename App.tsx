@@ -2,9 +2,10 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, ActivityIndicator, Text, Image } from 'react-native';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Redux Store
 import { store, persistor } from './src/store/store';
@@ -41,6 +42,34 @@ const TabIcon = ({ name, color, focused }: {
       color: color,
     }}>
       {getIcon()}
+    </Text>
+  );
+};
+
+const ProfileTabIcon = ({ color, focused }: { color: string; focused: boolean; }) => {
+  const { profileImage } = useAppSelector((state) => state.auth);
+
+  if (profileImage) {
+    return (
+      <Image
+        source={{ uri: profileImage }}
+        style={{
+          width: focused ? 28 : 24,
+          height: focused ? 28 : 24,
+          borderRadius: focused ? 14 : 12,
+          borderWidth: 1,
+          borderColor: color,
+        }}
+      />
+    );
+  }
+
+  return (
+    <Text style={{
+      fontSize: focused ? 24 : 20,
+      color: color,
+    }}>
+      👤
     </Text>
   );
 };
@@ -91,7 +120,7 @@ function TabsNavigator() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon name="profile" color={color} focused={focused} />
+            <ProfileTabIcon color={color} focused={focused} />
           ),
         }}
       />
@@ -112,7 +141,7 @@ function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        <Stack.Screen name="Main" component={TabsNavigator} />
+      <Stack.Screen name="Main" component={TabsNavigator} />
       ) : (
         <Stack.Screen name="Auth" component={AuthScreen} />
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,18 +12,29 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DatePicker from 'react-native-date-picker';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { fetchNewsStart, loadMoreNews } from '../store/slices/newsSlice';
+import { fetchNewsStart, loadMoreNews, clearError, resetRateLimit } from '../store/slices/newsSlice';
 import NewsCard from '../components/NewsCard';
 import type { NewsArticle } from '../store/slices/newsSlice';
 
 export default function NewsScreen() {
   const dispatch = useAppDispatch();
-  const { articles, loading, error, hasMore, filters } = useAppSelector((state) => state.news);
+  const { articles, loading, error, hasMore, filters, isRateLimited } = useAppSelector((state) => state.news);
   
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerType, setDatePickerType] = useState<'from' | 'to'>('from');
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
+
+  // Auto-clear rate limit error after 1 minute
+  useEffect(() => {
+    if (isRateLimited) {
+      const timer = setTimeout(() => {
+        dispatch(resetRateLimit());
+      }, 60000); // 1 minute
+
+      return () => clearTimeout(timer);
+    }
+  }, [isRateLimited, dispatch]);
 
   const formatDateForAPI = (date: Date) => {
     return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD format
@@ -48,6 +59,31 @@ export default function NewsScreen() {
       return;
     }
 
+    // Client-side validation for date range (past month limit)
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+    if (fromDate && fromDate < oneMonthAgo) {
+      Alert.alert(
+        'Date Not Allowed', 
+        'Free accounts can only access articles from the past month. Please select a date from the last 30 days.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (toDate && toDate < oneMonthAgo) {
+      Alert.alert(
+        'Date Not Allowed', 
+        'Free accounts can only access articles from the past month. Please select a date from the last 30 days.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Clear any existing errors
+    dispatch(clearError());
+
     dispatch(fetchNewsStart({
       from: fromDate ? formatDateForAPI(fromDate) : undefined,
       to: toDate ? formatDateForAPI(toDate) : undefined,
@@ -56,22 +92,30 @@ export default function NewsScreen() {
   };
 
   const handleLoadMore = useCallback(() => {
-    if (!loading && hasMore) {
+    // Don't load more if rate limited or already loading
+    if (!loading && hasMore && !isRateLimited) {
       dispatch(fetchNewsStart({
         from: filters.from,
         to: filters.to,
         page: Math.floor(articles.length / 20) + 1,
       }));
     }
-  }, [loading, hasMore, articles.length, filters, dispatch]);
+  }, [loading, hasMore, articles.length, filters, dispatch, isRateLimited]);
 
   const handleRefresh = useCallback(() => {
+    // Allow refresh even if rate limited (it's a fresh search)
+    dispatch(clearError());
     dispatch(fetchNewsStart({
       from: filters.from,
       to: filters.to,
       page: 1,
     }));
   }, [filters, dispatch]);
+
+  const handleRetryAfterRateLimit = () => {
+    dispatch(resetRateLimit());
+    dispatch(clearError());
+  };
 
   const renderNewsItem = ({ item }: { item: NewsArticle }) => (
     <NewsCard article={item} />
@@ -110,6 +154,73 @@ export default function NewsScreen() {
           textAlign: 'center'
         }}>
           Try adjusting your date filters and search again
+        </Text>
+      </View>
+    );
+  };
+
+  const renderRateLimitError = () => {
+    if (!error || !error.toLowerCase().includes('rate limit')) return null;
+
+    return (
+      <View style={{
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.3)'
+      }}>
+        <Text style={{ 
+          color: '#EF4444', 
+          fontSize: 16,
+          fontWeight: '600',
+          marginBottom: 8
+        }}>
+          Too Many Requests
+        </Text>
+        <Text style={{ 
+          color: '#EF4444', 
+          fontSize: 14,
+          marginBottom: 12,
+          lineHeight: 20
+        }}>
+          You've reached the API rate limit. Please wait a moment before trying again.
+        </Text>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#EF4444',
+            paddingVertical: 8,
+            paddingHorizontal: 16,
+            borderRadius: 6,
+            alignSelf: 'flex-start'
+          }}
+          onPress={handleRetryAfterRateLimit}
+        >
+          <Text style={{
+            color: 'white',
+            fontSize: 14,
+            fontWeight: '600'
+          }}>
+            Try Again
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderGeneralError = () => {
+    if (!error || error.toLowerCase().includes('rate limit')) return null;
+
+    return (
+      <View style={{
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16
+      }}>
+        <Text style={{ color: '#EF4444', fontSize: 14 }}>
+          {error}
         </Text>
       </View>
     );
@@ -159,6 +270,7 @@ export default function NewsScreen() {
                   setDatePickerType('from');
                   setShowDatePicker(true);
                 }}
+                disabled={isRateLimited}
               >
                 <Text style={{ color: 'white', fontSize: 12, marginBottom: 4 }}>From</Text>
                 <Text style={{ color: 'white', fontWeight: '600' }}>
@@ -177,6 +289,7 @@ export default function NewsScreen() {
                   setDatePickerType('to');
                   setShowDatePicker(true);
                 }}
+                disabled={isRateLimited}
               >
                 <Text style={{ color: 'white', fontSize: 12, marginBottom: 4 }}>To</Text>
                 <Text style={{ color: 'white', fontWeight: '600' }}>
@@ -187,36 +300,28 @@ export default function NewsScreen() {
 
             <TouchableOpacity
               style={{
-                backgroundColor: '#3B82F6',
+                backgroundColor: isRateLimited ? 'rgba(156, 163, 175, 0.5)' : '#3B82F6',
                 padding: 12,
                 borderRadius: 8,
                 alignItems: 'center'
               }}
               onPress={handleFetchNews}
-              disabled={loading}
+              disabled={loading || isRateLimited}
             >
               <Text style={{
                 color: 'white',
                 fontWeight: '600',
                 fontSize: 16
               }}>
-                {loading && articles.length === 0 ? 'Loading...' : 'Search News'}
+                {loading && articles.length === 0 ? 'Loading...' : 
+                 isRateLimited ? 'Rate Limited' : 'Search News'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {error && (
-            <View style={{
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              borderRadius: 8,
-              padding: 12,
-              marginBottom: 16
-            }}>
-              <Text style={{ color: '#EF4444', fontSize: 14 }}>
-                {error}
-              </Text>
-            </View>
-          )}
+          {/* Error Messages */}
+          {renderRateLimitError()}
+          {renderGeneralError()}
         </View>
 
         {/* News List */}

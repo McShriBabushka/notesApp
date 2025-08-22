@@ -39,17 +39,38 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
   }, [error, dispatch]);
 
   const handleAuth = async () => {
-    if (!email || !password || (isSignUp && !name)) {
-      Alert.alert('Error', 'Please fill in all fields');
+  if (!email || !password || (isSignUp && !name)) {
+    Alert.alert('Error', 'Please fill in all fields');
+    return;
+  }
+
+  if (isSignUp) {
+    // extra checks here 👇
+    if (!email.includes('@')) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
-
-    if (isSignUp) {
-      dispatch(signUp({ email, password, name }));
-    } else {
-      dispatch(signIn({ email, password }));
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
     }
-  };
+    if (name.trim().length < 2) {
+      Alert.alert('Error', 'Name must be at least 2 characters long');
+      return;
+    }
+  }
+
+  try {
+    if (isSignUp) {
+      await dispatch(signUp({ email, password, name })).unwrap();
+    } else {
+      await dispatch(signIn({ email, password })).unwrap();
+    }
+  } catch (err: any) {
+    Alert.alert("Error", err.message || "Something went wrong");
+  }
+};
+
 
   return (
     <ImageBackground
@@ -92,7 +113,8 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
                 marginBottom: 16,
                 fontSize: 16,
                 borderWidth: 1,
-                borderColor: '#E5E7EB'
+                borderColor: '#E5E7EB',
+                color: '#111827'
               }}
               placeholder="Full Name"
               value={name}
@@ -110,7 +132,8 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
               marginBottom: 16,
               fontSize: 16,
               borderWidth: 1,
-              borderColor: '#E5E7EB'
+              borderColor: '#E5E7EB',
+              color: '#111827'
             }}
             placeholder="Email"
             value={email}
@@ -128,7 +151,8 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
               marginBottom: 16,
               fontSize: 16,
               borderWidth: 1,
-              borderColor: '#E5E7EB'
+              borderColor: '#E5E7EB',
+              color: '#111827'
             }}
             placeholder="Password"
             value={password}

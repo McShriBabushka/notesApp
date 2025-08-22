@@ -34,8 +34,6 @@ const locationSlice = createSlice({
     setCurrentLocation: (state, action: PayloadAction<LocationData>) => {
       state.currentLocation = action.payload;
       state.error = null;
-      // Increment count when new location is received
-      state.locationHistoryCount = state.locationHistoryCount + 1;
     },
     setLocationError: (state, action: PayloadAction<string>) => {
       state.error = action.payload;

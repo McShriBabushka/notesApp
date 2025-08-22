@@ -1,19 +1,20 @@
 import { call, put, takeLatest } from 'redux-saga/effects';
 import { PayloadAction } from '@reduxjs/toolkit';
-import { 
-  fetchNewsStart, 
-  fetchNewsSuccess, 
+import {
+  fetchNewsStart,
+  fetchNewsSuccess,
   fetchNewsFailure,
-  FetchNewsParams 
+  FetchNewsParams
 } from '../slices/newsSlice';
 
-const API_KEY = 'f0168210985c4dd5b78b63fb6db9d577';
+const API_KEY = '9ea3766d973b4ac994e15da2a6825daf';
 const BASE_URL = 'https://newsapi.org/v2';
 
 interface NewsResponse {
   status: string;
   totalResults: number;
   articles: NewsArticle[];
+  message?: string; // message field for error responses
 }
 
 interface NewsArticle {
@@ -42,11 +43,30 @@ function* fetchNewsApi(action: PayloadAction<FetchNewsParams>) {
     if (to) {
       url += `&to=${to}`;
     }
-    console.warn("FULL URL->",url);
+    
+    console.warn("FULL URL->", url);
     const response: Response = yield call(fetch, url);
     
+    // Handle rate limiting specifically
+    if (response.status === 429) {
+      yield put(fetchNewsFailure('Rate limit exceeded. Please try again later.'));
+      return;
+    }
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Handle other HTTP errors
+      if (response.status === 401) {
+        yield put(fetchNewsFailure('API key error. Please check your configuration.'));
+      } else if (response.status === 403) {
+        yield put(fetchNewsFailure('Access forbidden. Your API key may not have the required permissions.'));
+      } else if (response.status >= 400 && response.status < 500) {
+        yield put(fetchNewsFailure('Client error occurred. Please check your request.'));
+      } else if (response.status >= 500) {
+        yield put(fetchNewsFailure('Server error occurred. Please try again later.'));
+      } else {
+        yield put(fetchNewsFailure(`HTTP error! status: ${response.status}`));
+      }
+      return;
     }
     
     const data: NewsResponse = yield call([response, 'json']);
@@ -58,7 +78,12 @@ function* fetchNewsApi(action: PayloadAction<FetchNewsParams>) {
       hasMore: data.articles.length === 20 && page * 20 < data.totalResults
     }));
   } catch (error: any) {
-    yield put(fetchNewsFailure(error.message || 'Failed to fetch news'));
+    // Handle network errors
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      yield put(fetchNewsFailure('Network error. Please check your connection.'));
+    } else {
+      yield put(fetchNewsFailure(error.message || 'Failed to fetch news'));
+    }
   }
 }
 
